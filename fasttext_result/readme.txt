@@ -1,0 +1,1 @@
+Asturian and spanish Fasttext vector representations are saved in https://drive.google.com/drive/folders/1lJzv-qT3TDwh3D6xn0AXq037gTnSWXOx?usp=sharing
