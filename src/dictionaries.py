@@ -3,13 +3,12 @@ from tqdm import tqdm
 import os
 import re
 import pandas as pd
+import json
 import functools
 
-DALLA_to_value = {'Sustantivu':'Sustantivo', 'Preposición':'Preposición', 'Interxección':'Interjección', 'Verbu':'Verbo', 'Axetivu':'Adjetivo',
-                    'Alverbiu':'Adverbio', 'Conxunción':'Conjunción', 'Pronome':'Pronombre', 'Locución':'Locución'}
+# Warning, script in test phase. Use it under your own responsability.
 
-DRAE_to_value = {'interj.':'Interjección', 'loc.':'Locución', 'Loc.':'Locución', 'part.':'Verbo'}
-
+"""Get HTML headwords and entries"""
 def get_html_dictionary(xhtml_page):
     with open(xhtml_page, "r", encoding="utf-8") as dictionary_file:
         html_content = dictionary_file.read()
@@ -23,9 +22,11 @@ def get_html_dictionary(xhtml_page):
 
     return filtered_headwords, filtered_entries
 
+"""Get XLS dictionary"""
 def get_excel_dictionary(file_path):
     return pd.read_excel(file_path)
 
+"""Get the numbers that indicate different headword entries and their position in the text"""
 def get_meaning_numbers_and_positions(entry):
     regex = r"([1-9]\.|[1-9][0-9]\.)"
     meaning_numbers = re.findall(regex, entry)
@@ -60,13 +61,14 @@ def get_dalla_gendre_headwords_given_suffixes(headword, suffixes):
             # Final gendre words are the headword until the last vocal is encountered plus the suffix without ' -'
             if is_vowel(headword[i]):
                 if len(suffixes) == 1:
-                    femenine_headword = headword[:i]+suffixes[0][2:]
+                    feminine_headword = headword[:i]+suffixes[0][2:]
                     masculine_headword = headword 
                 else:
-                    femenine_headword = headword[:i]+suffixes[0][2:]
+                    feminine_headword = headword[:i]+suffixes[0][2:]
                     masculine_headword = headword[:i]+suffixes[1][2:]
-                return (masculine_headword, femenine_headword)
+                return (masculine_headword, feminine_headword)
             
+"""Returns masculine and feminine"""
 def get_rae_gendre_headwords_given_suffix(headword, suffix):
     def is_vowel(character):
         vowel = set('aeiouáéíóú')
@@ -82,13 +84,10 @@ def get_rae_gendre_headwords_given_suffix(headword, suffix):
         find_function = is_consonant
     for i in range(len(headword)-1, -1, -1):
         if find_function(headword[i]):
-            femenine_headword = headword[:i]+suffix
+            feminine_headword = headword[:i]+suffix
             masculine_headword = headword
             break
-    return (masculine_headword, femenine_headword)
-
-
-
+    return (masculine_headword, feminine_headword)
 
 def filter_meaning_numbers_and_positions(meaning_numbers, meaning_positions):
     if len(meaning_numbers) == 0:
@@ -108,7 +107,7 @@ def get_types(entry, type_set):
 ####### Exceptions #######
 ##########################
 
-
+"""Delete headwords that are exceptions"""
 def delete_exceptions(headwords, entries, numbers_and_positions, exception_indexes):
     exception_indexes = [index for index in range(len(numbers_and_positions)) if numbers_and_positions[index] == None]
     
@@ -116,7 +115,7 @@ def delete_exceptions(headwords, entries, numbers_and_positions, exception_index
         headwords.pop(index)
         entries.pop(index)
         numbers_and_positions.pop(index)
-    
+
 def delete_meaning_numbers(entry, meaning_positions):
         entry_without_numbers = []
         start = 0
@@ -129,11 +128,8 @@ def delete_meaning_numbers(entry, meaning_positions):
         
         return entry_without_numbers
 
-def get_locs(exception_entries):
-    return [index for index, string in enumerate(exception_entries) if 'Loc.' in string or 'loc.' in string]
-
-def get_parts(exception_entries):
-    return [index for index, string in enumerate(exception_entries) if 'Part.' in string or 'part.' in string]
+def clean_description(description):
+    return description.replace('[', '').replace(']', '')
 
     
 def main():
@@ -225,54 +221,23 @@ def main():
         headword_list[idx] = gendre_headwords
         description_list[idx] = word_entries
 
-    # Dataframe creation
-    #df_dalla_headwords = pd.DataFrame({
-    #    'ID': [i for i in range(len(headword_list))],
-    #    'Masculine': [tuple[0] for tuple in headword_list],
-    #    'Femenine': [tuple[1] for tuple in headword_list]
-    #})
-#
-    #df_dalla_entries = pd.DataFrame({
-    #    'ID': [i for i in range(len([description for word_descriptions in description_list for description in word_descriptions]))],
-    #    'Description': [description for word_descriptions in description_list for description in word_descriptions], 
-    #    'Headword_id': [idx for idx, word_descriptions in enumerate(description_list) for _ in word_descriptions]
-    #})
-#
-    #df_rae_headwords = pd.DataFrame({
-    #    'ID': [i for i in range(len(final_document_headwords))],
-    #    'Masculine': [tuple[0] for tuple in final_document_headwords],
-    #    'Femenine': [tuple[1] for tuple in final_document_headwords]
-    #})
-#
-    #df_rae_entries = pd.DataFrame({
-    #    'ID': [i for i in range(len([description for word_descriptions in final_document_entries for description in word_descriptions]))],
-    #    'Description': [description for word_descriptions in final_document_entries for description in word_descriptions], 
-    #    'Headword_id': [idx for idx, word_descriptions in enumerate(final_document_entries) for _ in word_descriptions]
-    #})
-#
-    #df_dalla_headwords.to_json('dalla_headwords.json', orient='records')
-    #df_dalla_entries.to_json('dalla_entries.json', orient='records')
-    #df_rae_headwords.to_json('rae_headwords.json', orient='records')
-    #df_rae_entries.to_json('rae_entries.json', orient='records')
 
+    # Dictionary creation
+    dalla_masculine = [(tuple[0], clean_description(definition)) for tuple, definitions in zip(headword_list, description_list) for definition in definitions]
+    dalla_feminine = [(tuple[1], clean_description(definition)) for tuple, definitions in zip(headword_list, description_list) for definition in definitions if tuple[1] != None]
+    dalla_dictionary = dalla_masculine + dalla_feminine
 
+    rae_masculine = [(tuple[0], clean_description(definition)) for tuple, definitions in zip(final_document_headwords, final_document_entries) for definition in definitions]
+    rae_feminine = [(tuple[1], clean_description(definition)) for tuple, definitions in zip(final_document_headwords, final_document_entries) for definition in definitions if tuple[1] != None]
+    rae_dictionary = rae_masculine + rae_feminine
 
-    df_dalla = pd.DataFrame({
-        'ID': [i for i in range(len(headword_list))],
-        'Masculine': [tuple[0] for tuple in headword_list],
-        'Femenine': [tuple[1] for tuple in headword_list],
-        'Definitions': [word_descriptions for word_descriptions in description_list]
-    })
+    # Save dalla_dictionary as JSON file
+    with open('../data/json/dalla_dictionary.json', 'w', encoding='utf-8') as f:
+        json.dump(dalla_dictionary, f)
 
-    df_rae = pd.DataFrame({
-        'ID': [i for i in range(len(final_document_headwords))],
-        'Masculine': [tuple[0] for tuple in final_document_headwords],
-        'Femenine': [tuple[1] for tuple in final_document_headwords],
-        'Definitions': [word_descriptions for word_descriptions in final_document_entries]
-    })
-
-    df_dalla.to_json('../data/json/dalla.json', orient='records')
-    df_rae.to_json('../data/json/rae.json', orient='records')
+    # Save rae_dictionary as JSON file
+    with open('../data/json/rae_dictionary.json', 'w', encoding='utf-8') as f:
+        json.dump(rae_dictionary, f)
     
 
 if __name__=="__main__":
